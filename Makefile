@@ -2,7 +2,7 @@
 all: mv mvp mvt
 
 mv: mv.c
-	gcc -Wall  -o mv mv.c
+	gcc -Wall  -o mv mv.c -lm
 
 mvp: mvp.c
 	gcc -Wall  -o mvp mvp.c
