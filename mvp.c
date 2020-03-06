@@ -31,7 +31,7 @@ void combineAndWriteResults(int created, char *resultfile, char* vec);
 
 void deleteMiddleFiles(int created);
 
-void writeToPipe(int* res, int n,int i, char* inter);
+void writeToPipe(int* res, int n,int i);
 
 int main(int argc, char *argv[]) {
 
@@ -131,8 +131,10 @@ void createAndProcessSplits(int files, char *vectorfile) {
             printf("Fork failed. :(\n");
             exit(-1);
         } else if (n == 0){ //child
+            printf("i am child #%d hello\n", i);
             mapperProcess(i, vectorfile);
         } else { // papa
+            printf("i am papa #%d hello\n", i);
             char name[9];
             snprintf(name, 9, "./inter%d", i);
             FILE* myfd = fopen(name, "r");
@@ -142,7 +144,6 @@ void createAndProcessSplits(int files, char *vectorfile) {
             int row, col, val;
 
             while((read = getline(&line, &len, myfd) != -1)){
-                printf("Read: %s", line);
                 sscanf(line, "%d%d%d\n", &row, &col, &val);
                 res[row-1] = res[row-1] + (val * vec[col-1]);
             }
@@ -160,7 +161,7 @@ void createAndProcessSplits(int files, char *vectorfile) {
 
 }
 
-void mapperProcess(int i, char *vectorfile) {
+void mapperProcess(int index, char *vectorfile) {
     //create a pipe and then write to it the processed data
     int n;
     int * vec;
@@ -170,10 +171,10 @@ void mapperProcess(int i, char *vectorfile) {
     res = initEmptyArr( n);
     printarr(res, n);
     printarr(vec, n);
-    printf("child %d found %d values in vector.\n", i, n);
+    printf("child %d found %d values in vector.\n", index, n);
 
     char buf[7];
-    snprintf(buf, 7, "split%d", i);
+    snprintf(buf, 7, "split%d", index);
     FILE *split = fopen(buf, "r");
 
     char*line = NULL;
@@ -183,10 +184,10 @@ void mapperProcess(int i, char *vectorfile) {
     printf("beginning to read..\n");
     int row, col, val;
     while ((read = getline(&line, &len, split) != -1)) {
-        printf("Read: %s\n", line);
-        for(int i = 0; i < 6; i++){
-            printf("|%c|\n", line[i]);
-        }
+        // printf("Read: %s\n", line);
+        // for(int i = 0; i < 6; i++){
+        //     printf("|%c|\n", line[i]);
+        // }
 
         
         sscanf(line, "%d%d%d\n", &row, &col, &val);
@@ -194,27 +195,30 @@ void mapperProcess(int i, char *vectorfile) {
     }
 
     fclose(split);
-    printf("in child %d, result is: ", i);
+    printf("in child %d, result is: ", index);
     printarr(res, n);
 
     //printing to files
-    char inter []= "./inter";
-    writeToPipe(res, n, i, inter);
+    printf("I WILL MAKE A PIPEEEE\n");
+    writeToPipe(res, n, index);
     free(vec);
     free(res);
     
     exit(0);
 }
 
-void writeToPipe(int* res, int n,int i, char* inter){
+void writeToPipe(int* res, int n,int i){
     //open the ith pipe
-    printf("opening pipe %d", i);
+    printf("opening pipe %d\n", i);
 
     char buf[9];
     snprintf(buf, 9, "./inter%d", i);
-    int piperes = mkfifo(buf, O_WRONLY);
+    int piperes = mkfifo(buf, 0666);
+    printf("pipe openedddd, result %d\n", piperes);
     FILE* fd = fopen(buf, "w");
 
+
+    //TODO seg fault right arounnnddd here
     for(int i = 0; i < n; i++){
         if (i < 0) {
             snprintf(buf, 7, "%d %d\n", i + 1, res[i]);
