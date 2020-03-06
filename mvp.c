@@ -5,6 +5,7 @@
 #include <wait.h>
 #include <math.h>
 #include <string.h>
+#include <fcntl.h>
 
 #define JOIN(a, b) (a ## b)
 // WARNING: don't LOOP in the same line
@@ -29,6 +30,8 @@ void printResult(int *arr, int n, int i, char *);
 void combineAndWriteResults(int created, char *resultfile, char* vec);
 
 void deleteMiddleFiles(int created);
+
+void writeToPipe(int* res, int n,int i, char* inter);
 
 int main(int argc, char *argv[]) {
 
@@ -133,6 +136,7 @@ void createAndProcessSplits(int files, char *vectorfile) {
 }
 
 void mapperProcess(int i, char *vectorfile) {
+    //create a pipe and then write to it the processed data
     int n;
     int * vec;
     int * res;
@@ -170,17 +174,27 @@ void mapperProcess(int i, char *vectorfile) {
     printarr(res, n);
 
     //printing to files
-    char inter []= "inter";
-    printResult(res, n, i, inter);
+    char inter []= "./inter";
+    writeToPipe(res, n, i, inter);
     free(vec);
     free(res);
     
     exit(0);
 }
 
+void writeToPipe(int* res, int n,int i, char* inter){
+    //open the ith pipe
+
+    char buf[9];
+    snprintf(buf, 9, "./inter%d", i);
+    int piperes = mkfifo(buf, O_WONLY);
+
+    //write the array to it
+}
+
 void printResult(int *arr, int n, int i, char* filename) {
     char buf[7];
-    if ( i >=0 ){
+    if ( i >=0 ){ 
         snprintf(buf, 7, "%s%d",filename,  i);
     } else{ //i < 0 is true for the end result file
         snprintf(buf, 7, "%s",filename);
