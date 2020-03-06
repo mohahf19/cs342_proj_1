@@ -119,6 +119,11 @@ void combineAndWriteResults(int created, char* resultName, char* vector) {
 
 void createAndProcessSplits(int files, char *vectorfile) {
     pid_t n = 0;
+    int vectorRow;
+    
+    int* vec = readVector(vectorfile, &vectorRow);
+    int* res = initEmptyArr(vectorRow);
+    
 
     for(int i = 0; i < files; i++){
         n = fork();
@@ -127,12 +132,32 @@ void createAndProcessSplits(int files, char *vectorfile) {
             exit(-1);
         } else if (n == 0){ //child
             mapperProcess(i, vectorfile);
+        } else { // papa
+            char name[9];
+            snprintf(name, 9, "./inter%d", i);
+            FILE* myfd = fopen(name, "r");
+            char* line;
+            size_t len = 0;
+            ssize_t read;
+            int row, col, val;
+
+            while((read = getline(&line, &len, myfd) != -1)){
+                printf("Read: %s", line);
+                sscanf(line, "%d%d%d\n", &row, &col, &val);
+                res[row-1] = res[row-1] + (val * vec[col-1]);
+            }
+
+            fclose(name);
         }
     }
 
     loop(files){
         wait(NULL);
     }
+
+    printarr(res, n);
+
+
 }
 
 void mapperProcess(int i, char *vectorfile) {
@@ -141,7 +166,6 @@ void mapperProcess(int i, char *vectorfile) {
     int * vec;
     int * res;
 
-    printf("hi\n");
     vec = readVector(vectorfile, &n);
     res = initEmptyArr( n);
     printarr(res, n);
@@ -184,11 +208,27 @@ void mapperProcess(int i, char *vectorfile) {
 
 void writeToPipe(int* res, int n,int i, char* inter){
     //open the ith pipe
+    printf("opening pipe %d", i);
 
     char buf[9];
     snprintf(buf, 9, "./inter%d", i);
-    int piperes = mkfifo(buf, O_WONLY);
+    int piperes = mkfifo(buf, O_WRONLY);
+    FILE* fd = fopen(buf, "w");
 
+    for(int i = 0; i < n; i++){
+        if (i < 0) {
+            snprintf(buf, 7, "%d %d\n", i + 1, res[i]);
+            fputs(buf, fd);
+        } else{
+            if (res[i] != 0){
+                snprintf(buf, 7, "%d %d\n", i + 1, res[i]);
+                fputs(buf, fd);
+            }
+        }
+    }
+
+    fclose(fd);
+    unlink(buf);
     //write the array to it
 }
 
