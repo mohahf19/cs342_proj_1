@@ -6,6 +6,7 @@
 #include <math.h>
 #include <string.h>
 #include <fcntl.h>
+#include <sys/time.h>
 
 #define JOIN(a, b) (a ## b)
 // WARNING: don't LOOP in the same line
@@ -31,9 +32,19 @@ void deleteMiddleFiles(int created);
 
 void writeToPipe(int* res, int n,int i);
 
+int microsec(const struct timeval *start, const struct timeval *end) {
+    long sec = end->tv_sec - start->tv_sec; //to avoid overflow
+    long microseconds = ((sec * 1000000) + end->tv_usec) - start->tv_usec;
+    return microseconds;
+}
+
 int main(int argc, char *argv[]) {
 
     if (argc == 5){
+
+        struct timeval before, after;
+        gettimeofday(&before, NULL);
+
         char* matrixfile = argv[1];
         char* vectorfile = argv[2];
         char* resultfile = argv[3];
@@ -54,6 +65,9 @@ int main(int argc, char *argv[]) {
         //combineAndWriteResults(filesCreated, resultfile, vectorfile);
 
         deleteMiddleFiles(filesCreated);
+
+        gettimeofday(&after, NULL);
+        printf("mvp took %d microseconds.\n\n", microsec(&before, &after));
 
     } else{
         //printf("missing parameters!\n");
