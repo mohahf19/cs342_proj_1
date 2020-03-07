@@ -17,8 +17,6 @@ void createSplits(char *matrixfile, int s, int k , int l, int *);
 
 void createAndProcessSplits(int k, char *vectorfile, char*);
 
-void printarr(int *pInt, int k);
-
 int* mapperProcess(int i, char *vectorfile, int*);
 
 int *readVector(char *vectorfile, int *numLines);
@@ -42,16 +40,13 @@ int main(int argc, char *argv[]) {
         char* partitions = argv[4];
         int k, s;
         int filesCreated;
-        printf("%s\n%s\n%s\n%s\n", matrixfile, vectorfile, resultfile, partitions);
+        //printf("%s\n%s\n%s\n%s\n", matrixfile, vectorfile, resultfile, partitions);
 
 
         int lineCount = countLines(matrixfile);
-        printf("%s has %d lines!\n", matrixfile, lineCount);
+        //printf("%s has %d lines!\n", matrixfile, lineCount);
         sscanf(partitions, "%d", &k);
-        printf("i need %d partitions, so %d\n = ceil(%f)", k,
-               (int) ceil(1.0 * lineCount/k), 1.0 * lineCount / k);
-        s = (int) (ceil(1.0 * lineCount / k));
-
+        s = lineCount / k;
         createSplits(matrixfile, s, k, lineCount, &filesCreated);
 
         createAndProcessSplits(filesCreated, vectorfile, resultfile);
@@ -61,7 +56,7 @@ int main(int argc, char *argv[]) {
         deleteMiddleFiles(filesCreated);
 
     } else{
-        printf("missing parameters!\n");
+        //printf("missing parameters!\n");
     }
     return 0;
 }
@@ -73,7 +68,7 @@ void deleteMiddleFiles(int created) {
         remove(buf);
     }
 
-    printf("Done deleting! bybye.\n");
+    //printf("Done deleting! bybye.\n");
 
 }
 
@@ -83,7 +78,7 @@ void combineAndWriteResults(int created, char* resultName, char* vector) {
 
     n = fork();
     if (n < 0){
-        printf("Fork failed:( \n");
+        //printf("Fork failed:( \n");
         exit(-1);
     } else if (n == 0){ //reducer process
         int n = countLines(vector);
@@ -105,13 +100,12 @@ void combineAndWriteResults(int created, char* resultName, char* vector) {
             }
             fclose(inter);
         }
-        printarr(result, n);
         printResult(result, n, -1, resultName);
         exit(0);
     } //child end
 
     wait(NULL);
-    printf("Writing result done! Thanks for using meeee. \n");
+    //printf("Writing result done! Thanks for using meeee. \n");
 }
 
 void createAndProcessSplits(int files, char *vectorfile, char* result) {
@@ -119,40 +113,33 @@ void createAndProcessSplits(int files, char *vectorfile, char* result) {
     int vectorRow;
     
     readVector(vectorfile, &vectorRow);
-    printf("i need this many veccies.. %d\n", vectorRow);
+    //printf("i need this many veccies.. %d\n", vectorRow);
     int* finalres = initEmptyArr(vectorRow);
-    printf("res is ");
-    printarr(finalres, vectorRow);
-    
-        
-    
+    //printf("res is ");
 
     for(int i = 0; i < files; i++){
-        printf("res is ");
-        printarr(finalres, vectorRow);
+        
         //make the pipes
         char buf[9];
         snprintf(buf, 9, "./inter%d", i);
         int piperes = mkfifo(buf, 0666);
-        printf("pipe openedddd, result %d\n", piperes);
+        //printf("pipe openedddd, result %d\n", piperes);
         
         n = fork();
         if (n < 0){
-            printf("Fork failed. :(\n");
+            //printf("Fork failed. :(\n");
             exit(-1);
         } else if (n == 0){ //child
-            printf("i am child #%d hello\n", i);
+            //printf("i am child #%d hello\n", i);
             int  n;
             int* res = mapperProcess(i, vectorfile, &n);
-            printf("the %dth child found result to be: ",i);
-            printarr(res, n);
 
             //open pipe for writing
             FILE* fd = fopen(buf, "w");
             for(int j = 0; j < n; j++){
                 char temp[255];
                 snprintf(temp, 255, "%d %d\n", j+1, res[j]);
-                printf("i will put this: %s\n", temp);
+                //printf("i will put this: %s\n", temp);
                 fputs(temp, fd);
             }
 
@@ -162,7 +149,7 @@ void createAndProcessSplits(int files, char *vectorfile, char* result) {
         } else { // papa
             
             FILE* fd = fopen(buf, "r");
-            printf("i am papa #%d hello\n", i);
+            //printf("i am papa #%d hello\n", i);
             char* line;
             size_t len = 0;
             ssize_t read;
@@ -170,9 +157,6 @@ void createAndProcessSplits(int files, char *vectorfile, char* result) {
 
             
             while((read = getline(&line, &len, fd) != -1)){
-                printf("res is ");
-                printarr(finalres, vectorRow);
-                printf("filling.. i read %s\n", line);
 
                 sscanf(line, "%d%d\n", &row, &val);
                 finalres[row-1] += val;
@@ -190,14 +174,14 @@ void createAndProcessSplits(int files, char *vectorfile, char* result) {
 
     n = fork();
     if (n < 0){
-        printf("fork failed\n");
+        //printf("fork failed\n");
         exit(-1);
     } else if (n == 0){  //writer child
         printResult(finalres, vectorRow, -1, result);
         exit(0);
     } else{
         wait(NULL);
-        printf("done writing to %s. wooohooo\n", result);
+        //printf("done writing to %s. wooohooo\n", result);
     }
     
     
@@ -210,9 +194,7 @@ int* mapperProcess(int index, char *vectorfile, int *arrSize) {
     vec = readVector(vectorfile, arrSize);
     int n = *arrSize;
     res = initEmptyArr( n);
-    printarr(res, n);
-    printarr(vec, n);
-    printf("child %d found %d values in vector.\n", index, n);
+    //printf("child %d found %d values in vector.\n", index, n);
 
     char buf[7];
     snprintf(buf, 7, "split%d", index);
@@ -222,12 +204,12 @@ int* mapperProcess(int index, char *vectorfile, int *arrSize) {
     size_t len = 0;
     ssize_t read ;
 
-    printf("beginning to read..\n");
+    //printf("beginning to read..\n");
     int row, col, val;
     while ((read = getline(&line, &len, split) != -1)) {
-        // printf("Read: %s\n", line);
+        // //printf("Read: %s\n", line);
         // for(int i = 0; i < 6; i++){
-        //     printf("|%c|\n", line[i]);
+        //     //printf("|%c|\n", line[i]);
         // }
 
         
@@ -236,8 +218,6 @@ int* mapperProcess(int index, char *vectorfile, int *arrSize) {
     }
 
     fclose(split);
-    printf("in child %d, result is: ", index);
-    printarr(res, n);
 
     //printing to files
     //rintf("I WILL MAKE A PIPEEEE\n");
@@ -250,13 +230,13 @@ int* mapperProcess(int index, char *vectorfile, int *arrSize) {
 
 void writeToPipe(int* res, int n,int i){
     //open the ith pipe
-    printf("opening pipe %d\n", i);
+    //printf("opening pipe %d\n", i);
 
     char buf[9];
     snprintf(buf, 9, "./inter%d", i);
     FILE* fd = fopen(buf, "w");
     
-    printf("I AM A CHILD AND IM WRITING\n");
+    //printf("I AM A CHILD AND IM WRITING\n");
     //TODO seg fault right arounnnddd here
     for(int i = 0; i < n; i++){
         if (i < 0) {
@@ -276,7 +256,7 @@ void writeToPipe(int* res, int n,int i){
 }
 
 void printResult(int *arr, int n, int i, char* filename) {
-    printf("writing to a file %s\n", filename);
+    //printf("writing to a file %s\n", filename);
     char* buf;
     if ( i >=0 ){ 
         snprintf(buf, 100, "%s%d",filename,  i);
@@ -284,7 +264,7 @@ void printResult(int *arr, int n, int i, char* filename) {
         buf = filename;
     }
 
-    printf("file name issss: %s\n", buf);
+    //printf("file name issss: %s\n", buf);
     FILE *fp = fopen(buf, "w");
     for(int i = 0; i < n; i++){
         if (i < 0) {
@@ -303,7 +283,7 @@ void printResult(int *arr, int n, int i, char* filename) {
 
 int* initEmptyArr(int n) {
     int* arr;
-    printf("initializing array..\n");
+    //printf("initializing array..\n");
     arr = (int *) malloc(sizeof(int) * n);
     for(int i = 0; i < n; i++){
         arr[i] = 0;
@@ -312,10 +292,10 @@ int* initEmptyArr(int n) {
 }
 
 int *readVector(char *vectorfile, int *numLines) {
-    printf("counting lines..\n");
+    //printf("counting lines..\n");
     int n = countLines(vectorfile);
     *numLines = n;
-    printf("found %d many lines.\n", n);
+    //printf("found %d many lines.\n", n);
     //make int arr and start filling it
     int * arr = (int *) malloc(sizeof(int) * (n));
     
@@ -328,7 +308,7 @@ int *readVector(char *vectorfile, int *numLines) {
 
     while ((read = getline(&line, &len, fp) != -1)) {
         int row, val;
-        printf("Read: %s\n", line);
+        //printf("Read: %s\n", line);
         sscanf(line,"%d%d\n", &row, &val);
         arr[row-1] = val;
         linesread++;
@@ -336,18 +316,10 @@ int *readVector(char *vectorfile, int *numLines) {
     return arr;
 }
 
-void printarr(int *arr, int k) {
-    printf("[");
-    for(int i = 0; i < k -1; i++){
-        printf("%d, ", arr[i]);
-    }
-    printf("%d]\n", arr[k-1]);
-}
-
 void createSplits(char *matrixfile, int s, int k, int l , int* filesCreated) {
     FILE *fp = fopen(matrixfile, "r");
     if (fp == NULL){
-        printf("Couldn't open %s\n", matrixfile);
+        ////printf("Couldn't open %s\n", matrixfile);
     }
     char*line = NULL;
     size_t len = 0;
@@ -358,21 +330,21 @@ void createSplits(char *matrixfile, int s, int k, int l , int* filesCreated) {
     for(int i = 0; i < k; i++){
         if (linesread < l) {
             int sofar = 0;
-            char buf[7];
-            snprintf(buf, 7, "split%d", i);
-            printf("file name is: %s\n", buf);
+            char buf[255];
+            snprintf(buf, 255, "split%d", i);
             FILE *out = fopen(buf, "w");
             if (out == NULL){
-                printf("couldn't open file %s\n", buf);
+                ////printf("couldn't open file %s\n", buf);
                 exit(-1);
             }
-            while (sofar < s && (read = getline(&line, &len, fp) != -1)) {
-                printf("Read: %s\n", line);
+            int count = i == k-1 ? s + l % k: s;
+            while (sofar < count && (read = getline(&line, &len, fp) != -1)) {
+                ////printf("Read: %s\n", line);
                 fputs(line, out);
                 sofar++;
                 linesread++;
             }
-            printf("done writing %s\n", buf);
+            ////printf("done writing %s\n", buf);
             fclose(out);
             *filesCreated = i + 1;
         }
@@ -385,15 +357,15 @@ void createSplits(char *matrixfile, int s, int k, int l , int* filesCreated) {
 int countLines(char *matrixfile) {
     FILE *fp = fopen(matrixfile, "r");
     if (fp == NULL){
-        printf("Couldn't find file %s", matrixfile);
+        //printf("Couldn't find file %s", matrixfile);
     }
     int count = 0;
 
     if (fp == NULL){
-        printf("File %s does not exist.\n", matrixfile);
+        //printf("File %s does not exist.\n", matrixfile);
         exit(-1);
     } else {
-        printf("counting file %s\n", matrixfile);
+        //printf("counting file %s\n", matrixfile);
 
         char*line = NULL;
         size_t len = 0;
