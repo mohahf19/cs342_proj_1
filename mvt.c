@@ -1,25 +1,445 @@
 #include <stdio.h>
-#include <stdlib.h>
+#include <sys/types.h>
 #include <unistd.h>
+#include <stdlib.h>
+#include <wait.h>
+#include <math.h>
 #include <string.h>
+#include <fcntl.h>
 #include <pthread.h>
 
-void * my_start_fn (void *  a)
+#define JOIN(a, b) (a ## b)
+// WARNING: don't LOOP in the same line
+#define loop(n) for (unsigned JOIN(HIDDEN, __LINE__) = 0; JOIN(HIDDEN, __LINE__) < n; JOIN(HIDDEN, __LINE__)++)
+
+struct mapperPassingData{
+          int index;
+          int* vector;
+          int count;
+          int* result;
+};
+
+struct reducerPassingData{
+  int files;
+  int count;
+  int** partialResults;
+  int* result;
+};
+
+void * mapperRunner (void *  a)
 {
-  printf ("thread started\n"); 
-  fflush (stdout); 
+  
+  struct mapperPassingData *data = a;
+  int* res = data->result;
+  int* vec = data->vector;
+  int* n = data->count;
+  int* index = data->index;
+  printf ("thread started: %d\n",index); 
+
+  //open the indexth split file
+  char buf[7];
+  snprintf(buf, 7, "split%d", index);
+  FILE *split = fopen(buf, "r");
+
+  char*line = NULL;
+    size_t len = 0;
+    ssize_t read ;
+
+    printf("beginning to read..\n");
+    int row, col, val;
+    while ((read = getline(&line, &len, split) != -1)) {
+        
+        sscanf(line, "%d%d%d\n", &row, &col, &val);
+        res[row-1] = res[row-1] + (val * vec[col-1]);
+    }
+
+  printf("solution of %dth split: ", index);
+  printarr(res, n);
 
   pthread_exit(NULL); 
 }
 
+void* reducerRunner(void* a){
+  printf("reducer thread started boi\n");
 
-int main()
-{
+  struct reducerPassingData *data = a;
+  int n = data->count;
+  int files = data->files;
+  int** partials = data->partialResults;
+  int* res = data->result;
 
-  pthread_t tid; 
+  for(int i = 0; i < files; i++){
+    printarr(partials[i], n);
+    for(int j = 0; j < n; j++){
+      res[j] += partials[i][j];
+    }
+  }
 
-  printf ("starting thread\n"); 
-  pthread_create(&tid, NULL, (void *) my_start_fn, NULL); 
-  
-  exit(0);
+  pthread_exit(0);
 }
+
+
+
+
+int countLines(char *matrixfile);
+
+void createSplits(char *matrixfile, int s, int k , int l, int *);
+
+void createAndProcessSplits(int k, char *vectorfile, char*);
+
+void printarr(int *pInt, int k);
+
+int* mapperProcess(int i, char *vectorfile, int*);
+
+int *readVector(char *vectorfile, int *numLines);
+
+int * initEmptyArr(int n);
+
+void printResult(int *arr, int n, int i, char *);
+
+void combineAndWriteResults(int created, char *resultfile, char* vec);
+
+void deleteMiddleFiles(int created);
+
+void writeToPipe(int* res, int n,int i);
+
+int main(int argc, char *argv[]) {
+
+    if (argc == 5){
+        char* matrixfile = argv[1];
+        char* vectorfile = argv[2];
+        char* resultfile = argv[3];
+        char* partitions = argv[4];
+        int k, s;
+        int filesCreated;
+        printf("%s\n%s\n%s\n%s\n", matrixfile, vectorfile, resultfile, partitions);
+
+
+        int lineCount = countLines(matrixfile);
+        printf("%s has %d lines!\n", matrixfile, lineCount);
+        sscanf(partitions, "%d", &k);
+        printf("i need %d partitions, so %d\n = ceil(%f)", k,
+               (int) ceil(1.0 * lineCount/k), 1.0 * lineCount / k);
+        s = (int) (ceil(1.0 * lineCount / k));
+
+        createSplits(matrixfile, s, k, lineCount, &filesCreated);
+
+        createAndProcessSplits(filesCreated, vectorfile, resultfile);
+
+        //combineAndWriteResults(filesCreated, resultfile, vectorfile);
+
+        deleteMiddleFiles(filesCreated);
+
+    } else{
+        printf("missing parameters!\n");
+    }
+    return 0;
+}
+
+void deleteMiddleFiles(int created) {
+    for(int i = 0; i < created; i++){
+        char buf[7];
+        snprintf(buf, 7, "split%d", i);
+        remove(buf);
+    }
+
+    printf("Done deleting! bybye.\n");
+
+}
+
+
+void combineAndWriteResults(int created, char* resultName, char* vector) {
+    pid_t n = 0;
+
+    n = fork();
+    if (n < 0){
+        printf("Fork failed:( \n");
+        exit(-1);
+    } else if (n == 0){ //reducer process
+        int n = countLines(vector);
+        int * result = initEmptyArr(n);
+
+        for (int i = 0; i < created; i++){
+            char buf[7];
+            snprintf(buf, 7, "inter%d", i);
+            FILE *inter = fopen(buf, "r");
+
+            char* line;
+            size_t len = 0;
+            ssize_t read;
+
+            while( (read = getline(&line, &len, inter) != -1)){
+                int row, val;
+                sscanf(line, "%d%d\n", &row, &val);
+                result[row-1] += val;
+            }
+            fclose(inter);
+        }
+        printarr(result, n);
+        printResult(result, n, -1, resultName);
+        exit(0);
+    } //child end
+
+    wait(NULL);
+    printf("Writing result done! Thanks for using meeee. \n");
+}
+
+void createAndProcessSplits(int files, char *vectorfile, char* result) {
+    //files-many mappers are ready boi
+    pthread_t * mappers = malloc(sizeof(pthread_t)* files);
+    pthread_attr_t attr;
+    pthread_t reducer;
+    int** partialResults = malloc(sizeof(int*)*files);
+    struct mapperPassingData* data = malloc(sizeof(struct mapperPassingData)*files);
+
+    int vectorRow;
+    int* vector;
+    
+    vector = readVector(vectorfile, &vectorRow);
+    printf("i need this many veccies.. %d\n", vectorRow);
+    int* resultArray =  initEmptyArr(vectorRow);
+    printf("res is ");
+    printarr(resultArray, vectorRow);
+
+    for(int i = 0; i < files; i++){
+        pthread_attr_init(&attr);
+        partialResults[i] = initEmptyArr(vectorRow);
+        
+        data[i].count = vectorRow;
+        data[i].index = i;
+        data[i].vector = vector;
+        data[i].result = partialResults[i];
+
+        pthread_create(&(mappers[i]), &attr, mapperRunner, &data[i]);
+    }
+
+    for(int i =0; i < files; i++){
+      pthread_join(mappers[i],NULL);
+    }
+
+    struct reducerPassingData reducerData;
+    pthread_attr_init(&attr);
+    reducerData.count = vectorRow;
+    reducerData.files = files;
+    reducerData.partialResults = partialResults;
+    reducerData.result = resultArray;
+
+    pthread_create(&reducer, &attr, reducerRunner, &reducerData);
+
+    pthread_join(reducer, NULL);
+
+    printResult(resultArray, vectorRow, -1, result);
+    printf("Done writing! lybye\n");
+    
+}
+
+int* mapperProcess(int index, char *vectorfile, int *arrSize) {
+    int * vec;
+    int * res;
+
+    vec = readVector(vectorfile, arrSize);
+    int n = *arrSize;
+    res = initEmptyArr( n);
+    printarr(res, n);
+    printarr(vec, n);
+    printf("child %d found %d values in vector.\n", index, n);
+
+    char buf[7];
+    snprintf(buf, 7, "split%d", index);
+    FILE *split = fopen(buf, "r");
+
+    char*line = NULL;
+    size_t len = 0;
+    ssize_t read ;
+
+    printf("beginning to read..\n");
+    int row, col, val;
+    while ((read = getline(&line, &len, split) != -1)) {
+        printf("Read: %s\n", line);
+        // for(int i = 0; i < 6; i++){
+        //     printf("|%c|\n", line[i]);
+        // }
+
+        
+        sscanf(line, "%d%d%d\n", &row, &col, &val);
+        res[row-1] = res[row-1] + (val * vec[col-1]);
+    }
+
+    fclose(split);
+    printf("in child %d, result is: ", index);
+    printarr(res, n);
+
+    //printing to files
+    //rintf("I WILL MAKE A PIPEEEE\n");
+    //writeToPipe(res, n, index);
+    free(vec);
+    //free(res);
+    return res;
+    //exit(0);
+}
+
+void writeToPipe(int* res, int n,int i){
+    //open the ith pipe
+    printf("opening pipe %d\n", i);
+
+    char buf[9];
+    snprintf(buf, 9, "./inter%d", i);
+    FILE* fd = fopen(buf, "w");
+    
+    printf("I AM A CHILD AND IM WRITING\n");
+    //TODO seg fault right arounnnddd here
+    for(int i = 0; i < n; i++){
+        if (i < 0) {
+            snprintf(buf, 7, "%d %d\n", i + 1, res[i]);
+            fputs(buf, fd);
+        } else{
+            if (res[i] != 0){
+                snprintf(buf, 7, "%d %d\n", i + 1, res[i]);
+                fputs(buf, fd);
+            }
+        }
+    }
+
+    fclose(fd);
+    unlink(buf);
+    //write the array to it
+}
+
+void printResult(int *arr, int n, int i, char* filename) {
+    printf("writing to a file %s\n", filename);
+    char* buf;
+    if ( i >=0 ){ 
+        snprintf(buf, 100, "%s%d",filename,  i);
+    } else{ //i < 0 is true for the end result file
+        buf = filename;
+    }
+
+    printf("file name issss: %s\n", buf);
+    FILE *fp = fopen(buf, "w");
+    for(int i = 0; i < n; i++){
+        if (i < 0) {
+            snprintf(buf, 255, "%d %d\n", i + 1, arr[i]);
+            fputs(buf, fp);
+        } else{
+            if (arr[i] != 0){
+                snprintf(buf, 255, "%d %d\n", i + 1, arr[i]);
+                fputs(buf, fp);
+            }
+        }
+    }
+
+    fclose(fp);
+}
+
+int* initEmptyArr(int n) {
+    int* arr;
+    printf("initializing array..\n");
+    arr = (int *) malloc(sizeof(int) * n);
+    for(int i = 0; i < n; i++){
+        arr[i] = 0;
+    }
+    return arr;
+}
+
+int *readVector(char *vectorfile, int *numLines) {
+    printf("counting lines..\n");
+    int n = countLines(vectorfile);
+    *numLines = n;
+    printf("found %d many lines.\n", n);
+    //make int arr and start filling it
+    int * arr = (int *) malloc(sizeof(int) * (n));
+    
+    FILE *fp = fopen(vectorfile, "r");
+
+    char*line = NULL;
+    size_t len = 0;
+    ssize_t read;
+    int linesread = 0;
+
+    while ((read = getline(&line, &len, fp) != -1)) {
+        int row, val;
+        printf("Read: %s\n", line);
+        sscanf(line,"%d%d\n", &row, &val);
+        arr[row-1] = val;
+        linesread++;
+    }
+    return arr;
+}
+
+void printarr(int *arr, int k) {
+    printf("[");
+    for(int i = 0; i < k -1; i++){
+        printf("%d, ", arr[i]);
+    }
+    printf("%d]\n", arr[k-1]);
+}
+
+void createSplits(char *matrixfile, int s, int k, int l , int* filesCreated) {
+    FILE *fp = fopen(matrixfile, "r");
+    if (fp == NULL){
+        printf("Couldn't open %s\n", matrixfile);
+    }
+    char*line = NULL;
+    size_t len = 0;
+    ssize_t read;
+    int linesread = 0;
+
+
+    for(int i = 0; i < k; i++){
+        if (linesread < l) {
+            int sofar = 0;
+            char buf[7];
+            snprintf(buf, 7, "split%d", i);
+            printf("file name is: %s\n", buf);
+            FILE *out = fopen(buf, "w");
+            if (out == NULL){
+                printf("couldn't open file %s\n", buf);
+                exit(-1);
+            }
+            while (sofar < s && (read = getline(&line, &len, fp) != -1)) {
+                printf("Read: %s\n", line);
+                fputs(line, out);
+                sofar++;
+                linesread++;
+            }
+            printf("done writing %s\n", buf);
+            fclose(out);
+            *filesCreated = i + 1;
+        }
+    }
+
+    free(line);
+    fclose(fp);
+}
+
+int countLines(char *matrixfile) {
+    FILE *fp = fopen(matrixfile, "r");
+    if (fp == NULL){
+        printf("Couldn't find file %s", matrixfile);
+    }
+    int count = 0;
+
+    if (fp == NULL){
+        printf("File %s does not exist.\n", matrixfile);
+        exit(-1);
+    } else {
+        printf("counting file %s\n", matrixfile);
+
+        char*line = NULL;
+        size_t len = 0;
+
+        while ((getline(&line, &len, fp) != -1)) {
+            count++;
+        }
+
+//
+//        while((ch=fgetc(fp)) !=EOF){
+//            if (ch == '\n')
+//                count++;
+//        }
+    }
+
+    fclose(fp);
+    return count;
+}
+
