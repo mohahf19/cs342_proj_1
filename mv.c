@@ -31,6 +31,7 @@ void combineAndWriteResults(int created, char *resultfile, char* vec);
 void deleteMiddleFiles(int created);
 
 int main(int argc, char *argv[]) {
+//TODO MAKE IT SUPPORT LARGE NUMBERS
 
     if (argc == 5){
         char* matrixfile = argv[1];
@@ -55,7 +56,7 @@ int main(int argc, char *argv[]) {
 
         combineAndWriteResults(filesCreated, resultfile, vectorfile);
 
-        deleteMiddleFiles(filesCreated);
+        //deleteMiddleFiles(filesCreated);
 
     } else{
         printf("missing parameters!\n");

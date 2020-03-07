@@ -15,11 +15,11 @@ int countLines(char *matrixfile);
 
 void createSplits(char *matrixfile, int s, int k , int l, int *);
 
-void createAndProcessSplits(int k, char *vectorfile);
+void createAndProcessSplits(int k, char *vectorfile, char*);
 
 void printarr(int *pInt, int k);
 
-void mapperProcess(int i, char *vectorfile);
+int* mapperProcess(int i, char *vectorfile, int*);
 
 int *readVector(char *vectorfile, int *numLines);
 
@@ -54,9 +54,9 @@ int main(int argc, char *argv[]) {
 
         createSplits(matrixfile, s, k, lineCount, &filesCreated);
 
-        createAndProcessSplits(filesCreated, vectorfile);
+        createAndProcessSplits(filesCreated, vectorfile, resultfile);
 
-        combineAndWriteResults(filesCreated, resultfile, vectorfile);
+        //combineAndWriteResults(filesCreated, resultfile, vectorfile);
 
         deleteMiddleFiles(filesCreated);
 
@@ -69,9 +69,6 @@ int main(int argc, char *argv[]) {
 void deleteMiddleFiles(int created) {
     for(int i = 0; i < created; i++){
         char buf[7];
-        snprintf(buf, 7, "inter%d", i);
-        remove(buf);
-
         snprintf(buf, 7, "split%d", i);
         remove(buf);
     }
@@ -117,38 +114,73 @@ void combineAndWriteResults(int created, char* resultName, char* vector) {
     printf("Writing result done! Thanks for using meeee. \n");
 }
 
-void createAndProcessSplits(int files, char *vectorfile) {
+void createAndProcessSplits(int files, char *vectorfile, char* result) {
     pid_t n = 0;
     int vectorRow;
     
-    int* vec = readVector(vectorfile, &vectorRow);
-    int* res = initEmptyArr(vectorRow);
+    readVector(vectorfile, &vectorRow);
+    printf("i need this many veccies.. %d\n", vectorRow);
+    int* finalres = initEmptyArr(vectorRow);
+    printf("res is ");
+    printarr(finalres, vectorRow);
+    
+        
     
 
     for(int i = 0; i < files; i++){
+        printf("res is ");
+        printarr(finalres, vectorRow);
+        //make the pipes
+        char buf[9];
+        snprintf(buf, 9, "./inter%d", i);
+        int piperes = mkfifo(buf, 0666);
+        printf("pipe openedddd, result %d\n", piperes);
+        
         n = fork();
         if (n < 0){
             printf("Fork failed. :(\n");
             exit(-1);
         } else if (n == 0){ //child
             printf("i am child #%d hello\n", i);
-            mapperProcess(i, vectorfile);
+            int  n;
+            int* res = mapperProcess(i, vectorfile, &n);
+            printf("the %dth child found result to be: ",i);
+            printarr(res, n);
+
+            //open pipe for writing
+            FILE* fd = fopen(buf, "w");
+            for(int j = 0; j < n; j++){
+                char temp[255];
+                snprintf(temp, 255, "%d %d\n", j+1, res[j]);
+                printf("i will put this: %s\n", temp);
+                fputs(temp, fd);
+            }
+
+            fclose(fd);
+            exit(0);
+            
         } else { // papa
+            
+            FILE* fd = fopen(buf, "r");
             printf("i am papa #%d hello\n", i);
-            char name[9];
-            snprintf(name, 9, "./inter%d", i);
-            FILE* myfd = fopen(name, "r");
             char* line;
             size_t len = 0;
             ssize_t read;
-            int row, col, val;
+            int row, val;
 
-            while((read = getline(&line, &len, myfd) != -1)){
-                sscanf(line, "%d%d%d\n", &row, &col, &val);
-                res[row-1] = res[row-1] + (val * vec[col-1]);
+            
+            while((read = getline(&line, &len, fd) != -1)){
+                printf("res is ");
+                printarr(finalres, vectorRow);
+                printf("filling.. i read %s\n", line);
+
+                sscanf(line, "%d%d\n", &row, &val);
+                finalres[row-1] += val;
+
             }
 
-            fclose(name);
+            fclose(fd);
+            unlink(buf);
         }
     }
 
@@ -156,18 +188,27 @@ void createAndProcessSplits(int files, char *vectorfile) {
         wait(NULL);
     }
 
-    printarr(res, n);
-
-
+    n = fork();
+    if (n < 0){
+        printf("fork failed\n");
+        exit(-1);
+    } else if (n == 0){  //writer child
+        printResult(finalres, vectorRow, -1, result);
+        exit(0);
+    } else{
+        wait(NULL);
+        printf("done writing to %s. wooohooo\n", result);
+    }
+    
+    
 }
 
-void mapperProcess(int index, char *vectorfile) {
-    //create a pipe and then write to it the processed data
-    int n;
+int* mapperProcess(int index, char *vectorfile, int *arrSize) {
     int * vec;
     int * res;
 
-    vec = readVector(vectorfile, &n);
+    vec = readVector(vectorfile, arrSize);
+    int n = *arrSize;
     res = initEmptyArr( n);
     printarr(res, n);
     printarr(vec, n);
@@ -199,12 +240,12 @@ void mapperProcess(int index, char *vectorfile) {
     printarr(res, n);
 
     //printing to files
-    printf("I WILL MAKE A PIPEEEE\n");
-    writeToPipe(res, n, index);
+    //rintf("I WILL MAKE A PIPEEEE\n");
+    //writeToPipe(res, n, index);
     free(vec);
-    free(res);
-    
-    exit(0);
+    //free(res);
+    return res;
+    //exit(0);
 }
 
 void writeToPipe(int* res, int n,int i){
@@ -213,11 +254,9 @@ void writeToPipe(int* res, int n,int i){
 
     char buf[9];
     snprintf(buf, 9, "./inter%d", i);
-    int piperes = mkfifo(buf, 0666);
-    printf("pipe openedddd, result %d\n", piperes);
     FILE* fd = fopen(buf, "w");
-
-
+    
+    printf("I AM A CHILD AND IM WRITING\n");
     //TODO seg fault right arounnnddd here
     for(int i = 0; i < n; i++){
         if (i < 0) {
@@ -237,22 +276,23 @@ void writeToPipe(int* res, int n,int i){
 }
 
 void printResult(int *arr, int n, int i, char* filename) {
-    char buf[7];
+    printf("writing to a file %s\n", filename);
+    char* buf;
     if ( i >=0 ){ 
-        snprintf(buf, 7, "%s%d",filename,  i);
+        snprintf(buf, 100, "%s%d",filename,  i);
     } else{ //i < 0 is true for the end result file
-        snprintf(buf, 7, "%s",filename);
+        buf = filename;
     }
 
-    printf("file name is: %s\n", buf);
+    printf("file name issss: %s\n", buf);
     FILE *fp = fopen(buf, "w");
     for(int i = 0; i < n; i++){
         if (i < 0) {
-            snprintf(buf, 7, "%d %d\n", i + 1, arr[i]);
+            snprintf(buf, 255, "%d %d\n", i + 1, arr[i]);
             fputs(buf, fp);
         } else{
             if (arr[i] != 0){
-                snprintf(buf, 7, "%d %d\n", i + 1, arr[i]);
+                snprintf(buf, 255, "%d %d\n", i + 1, arr[i]);
                 fputs(buf, fp);
             }
         }
