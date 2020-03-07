@@ -63,8 +63,8 @@ int main(int argc, char *argv[]) {
 
 void deleteMiddleFiles(int created) {
     for(int i = 0; i < created; i++){
-        char buf[7];
-        snprintf(buf, 7, "split%d", i);
+        char buf[255];
+        snprintf(buf, 255, "split%d", i);
         remove(buf);
     }
 
@@ -85,8 +85,8 @@ void combineAndWriteResults(int created, char* resultName, char* vector) {
         int * result = initEmptyArr(n);
 
         for (int i = 0; i < created; i++){
-            char buf[7];
-            snprintf(buf, 7, "inter%d", i);
+            char buf[255];
+            snprintf(buf, 255, "inter%d", i);
             FILE *inter = fopen(buf, "r");
 
             char* line;
@@ -120,8 +120,8 @@ void createAndProcessSplits(int files, char *vectorfile, char* result) {
     for(int i = 0; i < files; i++){
         
         //make the pipes
-        char buf[9];
-        snprintf(buf, 9, "./inter%d", i);
+        char buf[255];
+        snprintf(buf, 255, "./inter%d", i);
         int piperes = mkfifo(buf, 0666);
         //printf("pipe openedddd, result %d\n", piperes);
         
@@ -165,11 +165,8 @@ void createAndProcessSplits(int files, char *vectorfile, char* result) {
 
             fclose(fd);
             unlink(buf);
+            wait(NULL);
         }
-    }
-
-    loop(files){
-        wait(NULL);
     }
 
     n = fork();
@@ -196,8 +193,8 @@ int* mapperProcess(int index, char *vectorfile, int *arrSize) {
     res = initEmptyArr( n);
     //printf("child %d found %d values in vector.\n", index, n);
 
-    char buf[7];
-    snprintf(buf, 7, "split%d", index);
+    char buf[255];
+    snprintf(buf, 255, "split%d", index);
     FILE *split = fopen(buf, "r");
 
     char*line = NULL;
@@ -232,19 +229,19 @@ void writeToPipe(int* res, int n,int i){
     //open the ith pipe
     //printf("opening pipe %d\n", i);
 
-    char buf[9];
-    snprintf(buf, 9, "./inter%d", i);
+    char buf[255];
+    snprintf(buf, 255, "./inter%d", i);
     FILE* fd = fopen(buf, "w");
     
     //printf("I AM A CHILD AND IM WRITING\n");
     //TODO seg fault right arounnnddd here
     for(int i = 0; i < n; i++){
         if (i < 0) {
-            snprintf(buf, 7, "%d %d\n", i + 1, res[i]);
+            snprintf(buf, 255, "%d %d\n", i + 1, res[i]);
             fputs(buf, fd);
         } else{
             if (res[i] != 0){
-                snprintf(buf, 7, "%d %d\n", i + 1, res[i]);
+                snprintf(buf, 255, "%d %d\n", i + 1, res[i]);
                 fputs(buf, fd);
             }
         }
@@ -259,7 +256,7 @@ void printResult(int *arr, int n, int i, char* filename) {
     //printf("writing to a file %s\n", filename);
     char* buf;
     if ( i >=0 ){ 
-        snprintf(buf, 100, "%s%d",filename,  i);
+        snprintf(buf, 255, "%s%d",filename,  i);
     } else{ //i < 0 is true for the end result file
         buf = filename;
     }

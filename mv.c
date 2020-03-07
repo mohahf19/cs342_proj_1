@@ -50,7 +50,7 @@ int main(int argc, char *argv[]) {
 
         combineAndWriteResults(filesCreated, resultfile, vectorfile);
 
-        //deleteMiddleFiles(filesCreated);
+        deleteMiddleFiles(filesCreated);
 
     } else{
         //printf("missing parameters!\n");
